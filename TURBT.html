@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>סימולטור TURBT חינוכי</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Varela+Round&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Varela Round', sans-serif;
+            background-color: #f0f8ff;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: #4a90e2;
+            color: white;
+            width: 100%;
+            text-align: center;
+            padding: 10px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        #game-container {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            max-width: 600px; /* Mobile friendly constraint */
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-left: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+        }
+
+        canvas {
+            touch-action: none; /* Prevent scrolling while playing */
+            cursor: pointer;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .instruction-box {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-size: 1.1rem;
+            color: #2c3e50;
+            border: 2px solid #4a90e2;
+            transition: all 0.3s ease;
+        }
+
+        /* Start Overlay */
+        #start-screen, #end-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(240, 248, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            font-family: 'Varela Round', sans-serif;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
+            transition: transform 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .badge {
+            background: #eef;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: #444;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>סימולטור TURBT אינטראקטיבי</h1>
+    </header>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <div id="instruction-text" class="instruction-box">טוען...</div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen">
+            <div style="max-width: 400px;">
+                <h2>ברוכים הבאים</h2>
+                <p>בסימולציה זו נלמד על הליך TURBT לטיפול בגידולי שלפוחית השתן.</p>
+                <div class="badge">מצב: חינוכי / איורי</div>
+                <ul style="text-align: right; margin-bottom: 20px; list-style-type: none; padding: 0;">
+                    <li>🔹 החדרת הציסטוסקופ בעדינות</li>
+                    <li>🔹 זיהוי הגידול השטחי</li>
+                    <li>🔹 הסרה עדינה ושמירה על דופן נקייה</li>
+                </ul>
+                <button class="btn" onclick="startGame()">התחל סימולציה</button>
+            </div>
+        </div>
+
+        <!-- End Screen -->
+        <div id="end-screen" class="hidden">
+            <h2>כל הכבוד!</h2>
+            <p>ההליך הושלם בהצלחה.</p>
+            <p>הגידול הוסר במלואו, ודופן השלפוחית נותרה חלקה ונקייה.</p>
+            <button class="btn" onclick="location.reload()">התחל מחדש</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const instructionText = document.getElementById('instruction-text');
+        const startScreen = document.getElementById('start-screen');
+        const endScreen = document.getElementById('end-screen');
+
+        // Game State
+        let gameState = 'INTRO'; // INTRO, INSERTION, BLADDER_VIEW, FINISHED
+        let width, height;
+        let animationId;
+
+        // Assets / Logic objects
+        const mouse = { x: 0, y: 0, isDown: false };
+        let lastMouseY = 0; // למעקב אחרי כיוון התנועה (משיכה/דחיפה)
+        
+        // Insertion Phase Variables
+        let scopeProgress = 0; // 0 to 100
+        let currentScopeY = 0; // משתנה למעקב אנכי
+        let currentScopeX = 0; // משתנה למעקב אופקי
+        const scopePath = [];
+
+        // Bladder Phase Variables
+        let tumorParticles = [];
+        let particlesRemoved = 0;
+        const totalParticles = 40;
+        let loopAngle = 0;
+        let showCleanAnimation = false;
+        let toolReady = false; // האם הכלי מוכן לשלב השני
+
+        // Colors (Pastel / Medical Illustration style)
+        const C_BG = '#f0f8ff';
+        const C_TISSUE_LIGHT = '#ffd6d6'; // Healthy tissue
+        const C_TISSUE_DARK = '#ffb3b3';  // Outline
+        const C_TUMOR = '#ff9e80';        // Coral color (friendly tumor)
+        const C_TUMOR_OUTLINE = '#e67e5e';
+        const C_SCOPE_METAL = '#bdc3c7';
+        const C_SCOPE_TIP = '#7f8c8d';
+        const C_WIRE = '#f1c40f'; // Gold/Yellow wire loop
+
+        // Resize Canvas
+        function resize() {
+            const container = document.getElementById('game-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Recalculate path if resizing during insertion
+            if(gameState === 'INSERTION') setupInsertionPath();
+            if(gameState === 'BLADDER_VIEW' && tumorParticles.length === 0) setupTumor();
+        }
+        window.addEventListener('resize', resize);
+
+        // Input Handling
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        ['mousedown', 'touchstart'].forEach(evt => 
+            canvas.addEventListener(evt, (e) => {
+                mouse.isDown = true;
+                const pos = getPos(e);
+                mouse.x = pos.x;
+                mouse.y = pos.y;
+                // עדכון lastMouseY בלחיצה כדי למנוע קפיצות בחישוב המשיכה
+                lastMouseY = pos.y;
+            })
+        );
+
+        ['mousemove', 'touchmove'].forEach(evt => 
+            canvas.addEventListener(evt, (e) => {
+                const pos = getPos(e);
+                // עדכון מיקום קודם לפני הנוכחי
+                lastMouseY = mouse.y;
+                mouse.x = pos.x;
+                mouse.y = pos.y;
+                e.preventDefault(); // Stop scrolling
+            })
+        );
+
+        ['mouseup', 'touchend'].forEach(evt => 
+            canvas.addEventListener(evt, () => {
+                mouse.isDown = false;
+            })
+        );
+
+        // --- GAME LOGIC ---
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            resize();
+            setupInsertionPath();
+            gameState = 'INSERTION';
+            currentScopeY = height; 
+            currentScopeX = width / 2; // אתחול במרכז
+            toolReady = false; // איפוס הכלי לשלב הבא
+            instructionText.innerText = "הזז את הציסטוסקופ בחופשיות במעלה השופכה";
+            loop();
+        }
+
+        function setupInsertionPath() {
+            // Define a simple curved path for the urethra
+            scopePath.length = 0;
+            const startX = width / 2;
+            const startY = height - 50;
+            const endY = 100;
+            
+            // Bezier curve points simulation for hit detection area
+            for(let y = startY; y >= endY; y -= 5) {
+                // Slight curve logic
+                let progress = (startY - y) / (startY - endY);
+                let xOffset = Math.sin(progress * Math.PI) * 30; 
+                scopePath.push({x: startX + xOffset, y: y});
+            }
+        }
+
+        function setupTumor() {
+            tumorParticles = [];
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // Create a "cauliflower" shape using circles
+            for(let i = 0; i < totalParticles; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * 30 + 10; // Random distance from center
+                const size = Math.random() * 15 + 10; // Size of bubble
+                
+                tumorParticles.push({
+                    x: centerX + Math.cos(angle) * radius,
+                    y: centerY + Math.sin(angle) * radius * 0.8, // Slightly oval
+                    r: size,
+                    active: true,
+                    opacity: 1
+                });
+            }
+        }
+
+        // --- DRAWING FUNCTIONS ---
+
+        function drawInsertionPhase() {
+            ctx.fillStyle = C_BG;
+            ctx.fillRect(0, 0, width, height);
+
+            const centerX = width / 2;
+            const bottomY = height;
+            const topY = 100;
+
+            // Draw Bladder Entry (Destination)
+            ctx.beginPath();
+            ctx.arc(centerX, topY - 40, 60, 0, Math.PI * 2);
+            ctx.fillStyle = C_TISSUE_DARK;
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center"; // Ensure text is centered
+            ctx.font = "16px sans-serif";
+            ctx.fillText("שלפוחית השתן", centerX, topY - 50);
+
+            // Draw Urethra (The path)
+            ctx.beginPath();
+            ctx.moveTo(centerX, bottomY);
+            // Left wall - made wider for free movement
+            ctx.bezierCurveTo(centerX - 60, bottomY - 100, centerX - 90, topY + 50, centerX - 30, topY);
+            // Top opening
+            ctx.lineTo(centerX + 30, topY);
+            // Right wall
+            ctx.bezierCurveTo(centerX + 90, topY + 50, centerX + 60, bottomY - 100, centerX, bottomY);
+            
+            ctx.fillStyle = C_TISSUE_LIGHT;
+            ctx.fill();
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = C_TISSUE_DARK;
+            ctx.stroke();
+
+            // Logic: Move scope based on mouse ONLY if dragging
+            if (mouse.isDown) {
+                // Smooth movement towards mouse position
+                currentScopeY += (mouse.y - currentScopeY) * 0.15;
+                currentScopeX += (mouse.x - currentScopeX) * 0.15;
+            } else if (currentScopeY === 0) {
+                 // First frame fallback
+                 currentScopeY = height;
+                 currentScopeX = centerX;
+            }
+
+            // Clamp Y values
+            let targetY = Math.max(currentScopeY, 100);
+            targetY = Math.min(targetY, height); 
+
+            // Clamp X values (Boundaries of Urethra logic)
+            // Calculate allowed width based on height (narrower at top)
+            let progress = (height - targetY) / (height - 100); // 0 at bottom, 1 at top
+            let allowedWidth = 70 * (1 - progress) + 20; // Wide at bottom, narrow at top
+            
+            // Constrain X
+            let targetX = Math.max(centerX - allowedWidth, Math.min(centerX + allowedWidth, currentScopeX));
+            
+            // Sync smoothed X with constrained X to prevent "sticking"
+            if(mouse.isDown) currentScopeX = targetX;
+
+            // Draw Scope (Shaft) - Flexible curve
+            ctx.beginPath();
+            ctx.moveTo(centerX, height + 50); // Base fixed at bottom
+            
+            // Use quadratic curve to simulate flexible tube bending
+            // Control point interpolates to give a natural bend feel
+            ctx.quadraticCurveTo(centerX + (targetX - centerX) * 0.5, targetY + 100, targetX, targetY);
+            
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = '#555'; // Darker inner shadow
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, height + 50);
+            ctx.quadraticCurveTo(centerX + (targetX - centerX) * 0.5, targetY + 100, targetX, targetY);
+            ctx.lineWidth = 8;
+            ctx.strokeStyle = C_SCOPE_METAL;
+            ctx.stroke();
+
+            // Draw Scope Tip (Camera)
+            ctx.beginPath();
+            ctx.arc(targetX, targetY, 12, 0, Math.PI * 2);
+            ctx.fillStyle = C_SCOPE_TIP;
+            ctx.fill();
+            
+            // "Light" from scope
+            ctx.beginPath();
+            ctx.fillStyle = "rgba(255, 255, 200, 0.5)";
+            ctx.arc(targetX, targetY, 25, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Guide Arrow - Show only if scope is low
+            if (targetY > height - 150) {
+                ctx.fillStyle = "rgba(74, 144, 226, 0.7)";
+                ctx.beginPath();
+                // Up arrow animation
+                let bounce = Math.sin(Date.now() / 200) * 5;
+                ctx.moveTo(targetX, targetY - 50 + bounce);
+                ctx.lineTo(targetX - 15, targetY - 30 + bounce);
+                ctx.lineTo(targetX + 15, targetY - 30 + bounce);
+                ctx.fill();
+                
+                // Text hint
+                if (!mouse.isDown) {
+                    ctx.fillStyle = "#333";
+                    ctx.font = "14px Varela Round";
+                    ctx.textAlign = "center";
+                    ctx.fillText("גרור את הצינורית", targetX, targetY - 60);
+                }
+            }
+
+            // Check Win Condition for Phase 1
+            // Must be near top AND centered enough to enter the hole
+            if (targetY <= 120 && Math.abs(targetX - centerX) < 30) {
+                scopeProgress += 2; // Speed of transition
+                if (scopeProgress > 50) {
+                    gameState = 'BLADDER_VIEW';
+                    setupTumor();
+                    toolReady = false; // דורש מהמשתמש לרדת למטה כדי להתחיל
+                    instructionText.innerText = "הגעת לשלפוחית. רד למטה כדי להפעיל את הכלי";
+                    // לא מאפסים את העכבר כדי לא לשבור רציפות, אבל הכלי יחכה למטה
+                }
+            }
+        }
+
+        function drawBladderPhase() {
+            // Background: Bladder Wall (Pink/Orange gradient circular view)
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const viewRadius = Math.min(width, height) * 0.45;
+            
+            // Logic to activate tool: User must return mouse to bottom area
+            if (!toolReady) {
+                if (mouse.y > height * 0.8) {
+                    toolReady = true;
+                    instructionText.innerText = "מקם את הלולאה מעל הגידול, לחץ ומשוך למטה לקילוף";
+                }
+            }
+
+            // Mask for circular camera view
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, viewRadius, 0, Math.PI * 2);
+            ctx.clip();
+
+            // Draw Fluid/Wall Texture
+            let grad = ctx.createRadialGradient(centerX, centerY, 50, centerX, centerY, viewRadius);
+            grad.addColorStop(0, '#ffebeb');
+            grad.addColorStop(1, '#ffcdcd');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Veins (Decoration)
+            ctx.strokeStyle = "rgba(200, 100, 100, 0.2)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 100, centerY - 100);
+            ctx.quadraticCurveTo(centerX, centerY, centerX + 120, centerY - 80);
+            ctx.stroke();
+
+            // Draw Tumor
+            let tumorRemaining = 0;
+            for(let p of tumorParticles) {
+                if(p.active) {
+                    tumorRemaining++;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = C_TUMOR;
+                    ctx.fill();
+                    ctx.strokeStyle = C_TUMOR_OUTLINE;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    // Texture dots on tumor
+                    ctx.fillStyle = "rgba(255,255,255,0.3)";
+                    ctx.beginPath();
+                    ctx.arc(p.x - p.r*0.3, p.y - p.r*0.3, p.r*0.2, 0, Math.PI*2);
+                    ctx.fill();
+                } else if (p.opacity > 0) {
+                    // Fading debris animation
+                    p.opacity -= 0.05;
+                    p.y += 2; // drift down faster (falling off wall)
+                    ctx.globalAlpha = p.opacity;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r * 0.8, 0, Math.PI * 2);
+                    ctx.fillStyle = "#d35400"; // Darker when cut
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            // Draw "Clean Wall" underlay if mostly done
+            if(tumorRemaining < 5) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                ctx.font = "20px Varela Round";
+                ctx.textAlign = "center";
+                // ctx.fillText("דופן נקייה", centerX, centerY + 100);
+            }
+
+            // Draw Instrument (Resection Loop)
+            // It follows the mouse but stays anchored to bottom
+            const instBaseX = centerX;
+            const instBaseY = height + 50;
+            
+            // אם הכלי לא מוכן, הוא נשאר למטה
+            let targetToolX = toolReady ? mouse.x : centerX;
+            let targetToolY = toolReady ? mouse.y : height + 20;
+
+            // Calculate angle to mouse
+            const dx = targetToolX - instBaseX;
+            const dy = targetToolY - instBaseY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            // Limit reach
+            const maxReach = viewRadius * 1.8;
+            const reach = Math.min(dist, maxReach);
+            const angle = Math.atan2(dy, dx);
+            
+            const tipX = instBaseX + Math.cos(angle) * reach;
+            const tipY = instBaseY + Math.sin(angle) * reach;
+
+            // Draw Shaft
+            ctx.beginPath();
+            ctx.moveTo(instBaseX, instBaseY); // Start slightly off screen
+            ctx.lineTo(tipX, tipY);
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#34495e'; // Dark Instrument body
+            ctx.stroke();
+
+            // Draw The Loop (Wire)
+            // The loop is at the tip.
+            ctx.save();
+            ctx.translate(tipX, tipY);
+            ctx.rotate(angle + Math.PI / 2); // Perpendicular to shaft
+            
+            // Wire color changes if actively cutting (mouse down AND pulling)
+            // בדיקת משיכה: האם העכבר זז למטה (Y גדל)
+            const isPulling = (mouse.y - lastMouseY) > 0.5;
+            const isCutting = mouse.isDown && isPulling && toolReady;
+
+            ctx.strokeStyle = isCutting ? '#fff' : C_WIRE;
+            ctx.shadowColor = isCutting ? '#ffaa00' : 'transparent';
+            ctx.shadowBlur = isCutting ? 15 : 0;
+
+            ctx.beginPath();
+            ctx.arc(0, -20, 15, 0, Math.PI, true); // Semi circle loop
+            ctx.lineWidth = isCutting ? 4 : 3;
+            ctx.stroke();
+            
+            // Draw electric arc effect if cutting
+            if (isCutting) {
+                ctx.strokeStyle = "rgba(255, 255, 100, 0.8)";
+                ctx.beginPath();
+                ctx.moveTo(-15, -20);
+                ctx.lineTo(15, -20);
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+
+            // Collision Detection (Resection Logic)
+            if(isCutting) {
+                // Check collision with loop tip
+                // Approximate loop position is tipX, tipY
+                for(let p of tumorParticles) {
+                    if(p.active) {
+                        const pdx = p.x - tipX;
+                        const pdy = p.y - tipY;
+                        const pdist = Math.sqrt(pdx*pdx + pdy*pdy);
+                        if(pdist < 35) { // 35 is reach radius of loop + forgiveness
+                            p.active = false;
+                            particlesRemoved++;
+                        }
+                    }
+                }
+            }
+
+            // Restore Clip
+            ctx.restore();
+
+            // Vignette (Scope feel)
+            let gradV = ctx.createRadialGradient(centerX, centerY, viewRadius * 0.9, centerX, centerY, viewRadius + 20);
+            gradV.addColorStop(0, 'rgba(0,0,0,0)');
+            gradV.addColorStop(0.5, 'rgba(0,0,0,0.5)');
+            gradV.addColorStop(1, 'rgba(0,0,0,1)');
+            ctx.fillStyle = gradV;
+            ctx.fillRect(0, 0, width, height);
+
+            // Overlay instruction if tool not ready
+            if (!toolReady) {
+                ctx.fillStyle = "rgba(0,0,0,0.4)";
+                ctx.fillRect(0, 0, width, height);
+                
+                // Draw arrow pointing down
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(centerX, height - 150);
+                ctx.lineTo(centerX - 20, height - 180);
+                ctx.lineTo(centerX + 20, height - 180);
+                ctx.fill();
+                ctx.fillRect(centerX - 10, height - 250, 20, 70);
+                
+                ctx.font = "bold 24px Varela Round";
+                ctx.fillStyle = "white";
+                ctx.textAlign = "center";
+                ctx.shadowColor = "black";
+                ctx.shadowBlur = 5;
+                ctx.fillText("רד למטה", centerX, height - 280);
+                ctx.fillText("כדי להפעיל את הכלי", centerX, height - 100);
+                ctx.shadowBlur = 0;
+            }
+
+            // Win Check
+            if (tumorRemaining === 0) {
+                setTimeout(() => {
+                    endScreen.classList.remove('hidden');
+                    instructionText.innerText = "הליך הושלם";
+                    gameState = 'FINISHED';
+                }, 1000);
+            }
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, width, height);
+
+            if(gameState === 'INSERTION') {
+                drawInsertionPhase();
+            } else if (gameState === 'BLADDER_VIEW') {
+                drawBladderPhase();
+            }
+
+            if(gameState !== 'FINISHED') {
+                animationId = requestAnimationFrame(loop);
+            }
+        }
+
+        // Initialize sizes
+        resize();
+
+    </script>
+</body>
+</html>
