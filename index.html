@@ -848,6 +848,36 @@
             ctx.fillStyle = grad;
             ctx.fillRect(0,0,width,height);
 
+            // --- ADD BLADDER WALL (Updated Position: Above Tumor Base) ---
+            // Tumor top row is roughly at (cy - 50). We want the wall just above/touching that.
+            const wallY = cy - 60; 
+            
+            ctx.beginPath();
+            // Start higher up
+            ctx.moveTo(cx - r, wallY); 
+            // Curve slightly down towards the center to "hold" the tumor
+            ctx.quadraticCurveTo(cx, wallY + 15, cx + r, wallY);
+            // Fill UP to the top of screen
+            ctx.lineTo(cx + r, 0); 
+            ctx.lineTo(cx - r, 0);
+            ctx.closePath();
+            
+            // Wall Texture/Gradient
+            let wallGrad = ctx.createLinearGradient(cx, 0, cx, wallY + 20);
+            wallGrad.addColorStop(0, '#ef9a9a'); 
+            wallGrad.addColorStop(1, '#ffcdd2'); 
+            ctx.fillStyle = wallGrad;
+            ctx.fill();
+
+            // Add veins to the wall (Updated position)
+            ctx.strokeStyle = "rgba(180, 50, 50, 0.3)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            // Veins sitting on the wall area
+            ctx.moveTo(cx - 80, wallY - 40);
+            ctx.quadraticCurveTo(cx - 20, wallY + 10, cx + 60, wallY - 50);
+            ctx.stroke();
+
             // DETERMINE HEATING STATE
             // In demo: simMouse.isDown dictates heating
             // In game: ANY click/hold on canvas (mouse.isDown) OR Spacebar dictates heating
