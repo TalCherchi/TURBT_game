@@ -162,6 +162,30 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
+        /* Special style for instrument screen to allow seeing canvas behind */
+        #instrument-screen {
+            background: rgba(240, 248, 255, 0.1); /* Mostly transparent */
+            justify-content: flex-end; /* Align card to bottom */
+            align-items: flex-end; /* Align to Left (in RTL context, end is left) */
+            padding: 20px; /* Padding from edges */
+        }
+        
+        #instrument-screen .content-card {
+            background: rgba(255, 255, 255, 0.95);
+            max-width: 280px; /* Even smaller width */
+            padding: 15px; /* More compact */
+            box-shadow: 0 5px 25px rgba(0,0,0,0.15);
+            margin: 0; 
+            border: 1px solid #ddd;
+            font-size: 0.9rem; /* Smaller text base */
+        }
+        
+        #instrument-screen h3 {
+            font-size: 1.1rem;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
         .badge {
             background: #eef;
             padding: 5px 10px;
@@ -204,11 +228,10 @@
         
         <div id="ui-layer">
             <div id="demo-indicator" class="demo-badge hidden">מצב הדגמה (אוטומטי)</div>
-            <div id="instruction-text" class="instruction-box">ברוכים הבאים</div>
+            <div id="instruction-text" class="instruction-box hidden">ברוכים הבאים</div>
             
             <!-- Heat Indicator (Only visible in resection) -->
             <div id="heat-wrapper" class="hidden instruction-box" style="flex-direction:column; padding: 10px;">
-                <!-- Added ID to text for controlling visibility -->
                 <div id="heat-text" style="font-size: 0.9rem; margin-bottom: 5px;">חום הלולאה (לחץ והחזק בכל מקום)</div>
                 <div id="heat-container"><div id="heat-fill"></div></div>
             </div>
@@ -236,14 +259,25 @@
                 <p>בסימולציה זו נלמד על הליך TURBT לטיפול בגידולי שלפוחית השתן.</p>
                 <p>מטרת סימולציה זו היא להגביר את הבנת הפרוצדורה הרפואית שאתה עומד לעבור באמצעות השתתפות פעילה.</p>
                 <div class="badge">מצב: חינוכי / איורי</div>
-                <p style="font-size: 0.9rem; color: #666;">
-                    תחילה נצפה בהדגמה קצרה של שלבי ההליך, ולאחר מכן תתנסה בביצוע ההליך בעצמך.
-                </p>
+                <button class="game-btn" style="background:#4a90e2; width:100%; justify-content:center; margin-top:20px;" onclick="goToInstrumentScreen()">המשך</button>
+            </div>
+        </div>
+
+        <!-- SCREEN 1.2: INSTRUMENT SHOWCASE -->
+        <div id="instrument-screen" class="overlay-screen hidden">
+            <!-- Canvas draws instrument behind this -->
+            <div class="content-card">
+                <h3>הכירו את הציסטוסקופ</h3>
+                <p>זהו המכשיר בו ישתמש הרופא במהלך הפעולה.</p>
+                <ul style="text-align: right; font-size: 0.95rem; margin-bottom:20px; list-style: none; padding: 0;">
+                    <li style="margin-bottom:8px;">🔍 <strong>מצלמה וסיב אופטי:</strong> מאפשרים ראייה ברורה בתוך השלפוחית.</li>
+                    <li>⚡ <strong>לולאת חיתוך:</strong> משמשת להסרת הגידול וצריבת כלי דם.</li>
+                </ul>
                 <button class="game-btn" style="background:#4a90e2; width:100%; justify-content:center;" onclick="startDemo()">התחל הדגמה וסימולציה</button>
             </div>
         </div>
 
-        <!-- SCREEN 1.5: INTERMISSION (Between Demo and Game) -->
+        <!-- SCREEN 1.5: INTERMISSION -->
         <div id="intermission-screen" class="overlay-screen hidden">
             <div class="content-card">
                 <h2>ההדגמה הסתיימה</h2>
@@ -285,7 +319,7 @@
         const instructionText = document.getElementById('instruction-text');
         const demoIndicator = document.getElementById('demo-indicator');
         const heatWrapper = document.getElementById('heat-wrapper');
-        const heatText = document.getElementById('heat-text'); // New reference
+        const heatText = document.getElementById('heat-text'); 
         const heatFill = document.getElementById('heat-fill');
         const btnCoag = document.getElementById('btn-coag');
         const btnBack = document.getElementById('btn-back');
@@ -315,12 +349,15 @@
         let intProgress = 0;
 
         let tumorParticles = [];
+        let floatingChips = []; 
         let particlesRemoved = 0;
         let totalParticles = 0;
         let visibility = 1.0; 
         let bloodParticles = [];
         let loopHeat = 0; 
         let toolReady = false; 
+        
+        let halfwayEventTriggered = false;
 
         // Demo Timer
         let demoPhaseTime = 0;
@@ -344,7 +381,6 @@
             if (gameState.includes('EXTERNAL')) extScopeY = height * 0.6;
         }
         window.addEventListener('resize', resize);
-        // We will call resize again at end of script
 
         // --- INPUT HANDLING ---
 
@@ -372,32 +408,41 @@
         }
 
         ['mousedown', 'touchstart'].forEach(e => canvas.addEventListener(e, (ev) => {
-            if(isDemo) return; 
+            if(isDemo && gameState !== 'SHOW_INSTRUMENT') return; 
             mouse.isDown = true;
             const p = getPos(ev);
             mouse.x = p.x; mouse.y = p.y;
             lastMouseY = p.y;
         }));
         ['mousemove', 'touchmove'].forEach(e => canvas.addEventListener(e, (ev) => {
-            if(isDemo) return;
+            if(isDemo && gameState !== 'SHOW_INSTRUMENT') return;
             const p = getPos(ev);
             lastMouseY = mouse.y; 
             mouse.x = p.x; mouse.y = p.y;
             ev.preventDefault();
         }));
         ['mouseup', 'touchend'].forEach(e => canvas.addEventListener(e, () => {
-            if(isDemo) return;
+            if(isDemo && gameState !== 'SHOW_INSTRUMENT') return;
             mouse.isDown = false;
         }));
 
 
         /** GAME FLOW CONTROL **/
 
+        function goToInstrumentScreen() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('instrument-screen').classList.remove('hidden');
+            gameState = 'SHOW_INSTRUMENT';
+            loop();
+        }
+
         function startDemo() {
             document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('instrument-screen').classList.add('hidden');
             isDemo = true;
             demoIndicator.classList.remove('hidden');
             btnSkip.classList.remove('hidden');
+            instructionText.classList.remove('hidden');
             setPhase('DEMO_EXTERNAL');
             loop();
         }
@@ -428,6 +473,8 @@
             toolReady = false;
             mouse.isDown = false;
             isSpacebarHeating = false;
+            floatingChips = []; 
+            halfwayEventTriggered = false;
         }
 
         function setPhase(phase) {
@@ -456,16 +503,16 @@
             else if (phase === 'RESECTION' || phase === 'DEMO_RESECTION') {
                 instructionText.innerText = isDemo ? 
                     "הרופא משתמש בלולאה מתחממת הנמצאת בקצה המכשיר כדי לגרד את הגידול מדופן האיבר" : 
-                    "שלב 3: כוון עם העכבר. לחץ והחזק בכל מקום לחיתוך.";
+                    "שלב 3: חתוך את הגידול. השתמש בשטיפה כדי לשאוב שבבים שמסתירים את הראייה.";
                 setupTumor();
                 if(isDemo) {
                      toolReady = true;
-                     heatText.style.display = 'none'; // Hide instruction text in demo
+                     heatText.style.display = 'none'; 
                 } else {
                      toolReady = false;
                      btnCoag.classList.remove('hidden');
                      btnBack.classList.remove('hidden');
-                     heatText.style.display = 'block'; // Show instruction text in game
+                     heatText.style.display = 'block'; 
                 }
                 heatWrapper.classList.remove('hidden');
             }
@@ -482,8 +529,12 @@
 
         function doCoagulation() {
             if(gameState === 'RESECTION') {
-                visibility = Math.min(visibility + 0.3, 1.0); 
+                visibility = 1.0; 
                 bloodParticles = [];
+                floatingChips = []; 
+                if(!isDemo && toolReady) {
+                     instructionText.innerText = "שלב 3: חתוך את הגידול. השתמש בשטיפה כדי לשאוב שבבים שמסתירים את הראייה.";
+                }
             }
         }
 
@@ -540,6 +591,10 @@
                     simMouse.x += (targetP.x - simMouse.x) * approachSpeed;
                     simMouse.y += ((targetP.y + targetYOffset) - simMouse.y) * approachSpeed;
                 }
+                
+                if (floatingChips.length > 5 || visibility < 0.6) {
+                    doCoagulation();
+                }
             }
         }
 
@@ -547,6 +602,7 @@
 
         function setupTumor() {
             tumorParticles = [];
+            floatingChips = [];
             bloodParticles = [];
             particlesRemoved = 0;
             const cx = width / 2;
@@ -573,6 +629,93 @@
         }
 
         // --- DRAWING ---
+
+        function drawInstrumentShowcase() {
+            ctx.fillStyle = "#e0f7fa";
+            ctx.fillRect(0, 0, width, height);
+
+            // Move Right and Down
+            const cx = width * 0.75; 
+            const cy = height * 0.65; // Moved down further (was 0.5)
+
+            // Draw a large, diagonal cystoscope for inspection
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(-Math.PI / 4); // Diagonal placement
+            
+            // Reduced scale to ensure it fits entirely
+            ctx.scale(0.8, 0.8); // Scaled down (was 1.0)
+
+            // 1. Handle Body
+            ctx.fillStyle = "#2d3748";
+            ctx.fillRect(-20, -50, 40, 120);
+            
+            // Grip Lines
+            ctx.fillStyle = "rgba(0,0,0,0.3)";
+            for(let i=0; i<60; i+=8) ctx.fillRect(-20, -10+i, 40, 2);
+
+            // 2. Control Block
+            ctx.fillStyle = "#4a5568";
+            ctx.fillRect(-25, -90, 50, 40);
+
+            // 3. Eyepiece
+            ctx.fillStyle = "#1a202c";
+            ctx.beginPath();
+            ctx.moveTo(-15, 70); ctx.lineTo(15, 70);
+            ctx.lineTo(25, 90); ctx.lineTo(-25, 90);
+            ctx.closePath(); ctx.fill();
+
+            // 4. Shaft (Tube)
+            ctx.fillStyle = "#1a202c";
+            ctx.fillRect(-5, -300, 10, 210); // Long tube going up
+            ctx.fillStyle = "#4a5568";
+            ctx.fillRect(-3, -300, 6, 210); // Highlight
+
+            // 5. Tip & Loop
+            ctx.translate(0, -300);
+            
+            // Metal Tip
+            ctx.fillStyle = "#a0aec0";
+            ctx.fillRect(-6, -15, 12, 15);
+            
+            // Loop Wire
+            ctx.strokeStyle = "#f1c40f";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, -25, 10, 0, Math.PI, true);
+            ctx.stroke();
+
+            // Labels lines (drawn in local space)
+            ctx.strokeStyle = "#e74c3c";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+
+            // Line to loop
+            ctx.beginPath(); ctx.moveTo(15, -25); ctx.lineTo(120, -25); ctx.stroke();
+            
+            // Line to Camera (Tip)
+            ctx.beginPath(); ctx.moveTo(10, -5); ctx.lineTo(120, 20); ctx.stroke();
+
+            ctx.restore();
+
+            // Labels Text (drawn in screen space)
+            ctx.fillStyle = "#2c3e50";
+            ctx.font = "bold 16px Varela Round";
+            ctx.textAlign = "left"; // Text aligns to the left of the coordinate
+            
+            // Adjusted positions to match the end of the red dashed lines
+            // The lines point towards top-left/center relative to CX,CY due to rotation
+            
+            // "Electric Cutting Loop" - matches the top dashed line
+            ctx.fillText("לולאת חיתוך חשמלית", cx - 120, cy - 240);
+            
+            // "Camera and Fiber Optic" - matches the bottom dashed line
+            ctx.fillText("מצלמה וסיב אופטי", cx - 90, cy - 190);
+            
+            // Handle label
+            ctx.fillText("ידית אחיזה", cx - 80, cy + 60);
+            ctx.beginPath(); ctx.moveTo(cx - 70, cy + 50); ctx.lineTo(cx - 20, cy + 40); ctx.stroke();
+        }
 
         function drawExternal() {
             const input = isDemo ? simMouse : mouse;
@@ -849,39 +992,30 @@
             ctx.fillStyle = grad;
             ctx.fillRect(0,0,width,height);
 
-            // --- ADD BLADDER WALL (Updated Position: Above Tumor Base) ---
-            // Tumor top row is roughly at (cy - 50). We want the wall just above/touching that.
+            // --- DRAW BLADDER WALL (Above Tumor) ---
             const wallY = cy - 60; 
             
             ctx.beginPath();
-            // Start higher up
             ctx.moveTo(cx - r, wallY); 
-            // Curve slightly down towards the center to "hold" the tumor
             ctx.quadraticCurveTo(cx, wallY + 15, cx + r, wallY);
-            // Fill UP to the top of screen
             ctx.lineTo(cx + r, 0); 
             ctx.lineTo(cx - r, 0);
             ctx.closePath();
             
-            // Wall Texture/Gradient
             let wallGrad = ctx.createLinearGradient(cx, 0, cx, wallY + 20);
             wallGrad.addColorStop(0, '#ef9a9a'); 
             wallGrad.addColorStop(1, '#ffcdd2'); 
             ctx.fillStyle = wallGrad;
             ctx.fill();
 
-            // Add veins to the wall (Updated position)
             ctx.strokeStyle = "rgba(180, 50, 50, 0.3)";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            // Veins sitting on the wall area
             ctx.moveTo(cx - 80, wallY - 40);
             ctx.quadraticCurveTo(cx - 20, wallY + 10, cx + 60, wallY - 50);
             ctx.stroke();
 
             // DETERMINE HEATING STATE
-            // In demo: simMouse.isDown dictates heating
-            // In game: ANY click/hold on canvas (mouse.isDown) OR Spacebar dictates heating
             let isHeatingNow = isDemo ? simMouse.isDown : (mouse.isDown || isSpacebarHeating);
 
             // Heat Logic
@@ -891,6 +1025,19 @@
                 loopHeat = Math.max(loopHeat - 5, 0);
             }
             heatFill.style.width = loopHeat + "%";
+
+            // --- CHECK 50% EVENT ---
+            if (!isDemo && !halfwayEventTriggered && particlesRemoved >= totalParticles / 2) {
+                halfwayEventTriggered = true;
+                visibility = 0.1; // Force poor visibility
+                
+                // Show visual cue for button
+                const btn = document.getElementById('btn-coag');
+                if(btn) {
+                    btn.style.transform = "scale(1.2)";
+                    setTimeout(() => btn.style.transform = "scale(1)", 500);
+                }
+            }
 
             let lowestY = 0;
             tumorParticles.forEach(p => { if(p.active && p.y > lowestY) lowestY = p.y; });
@@ -912,6 +1059,37 @@
                         ctx.lineWidth = 2;
                         ctx.stroke();
                     }
+                }
+            });
+
+            // --- DRAW FLOATING CHIPS (DEBRIS) ---
+            floatingChips.forEach((chip, index) => {
+                chip.x += chip.vx;
+                chip.y += chip.vy;
+                chip.rotation += chip.vr;
+
+                ctx.save();
+                ctx.translate(chip.x, chip.y);
+                ctx.rotate(chip.rotation);
+                
+                ctx.beginPath();
+                ctx.moveTo(-chip.r, 0);
+                ctx.quadraticCurveTo(-chip.r, -chip.r, 0, -chip.r);
+                ctx.quadraticCurveTo(chip.r, -chip.r, chip.r, 0);
+                ctx.quadraticCurveTo(chip.r, chip.r, 0, chip.r);
+                ctx.quadraticCurveTo(-chip.r, chip.r, -chip.r, 0);
+                
+                ctx.fillStyle = "#ffccbc"; 
+                ctx.fill();
+                ctx.strokeStyle = "#cb4335"; 
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.restore();
+
+                const d = Math.hypot(chip.x - cx, chip.y - cy);
+                if (d > r) {
+                     chip.vx *= -0.5;
+                     chip.vy *= -0.5;
                 }
             });
 
@@ -949,15 +1127,21 @@
                 
                 let wireColor = `rgb(${200 + loopHeat*0.55}, ${200 + loopHeat*0.55}, ${100 - loopHeat})`; 
                 let isHotEnough = loopHeat > 80;
-                // For demo, we simulate pull by checking movement
-                // For real game, we check delta of MOUSE Y
                 let isPulling = isDemo ? true : (mouse.y - lastMouseY) > 0.5;
-                let isCutting = isHeatingNow && isPulling && isHotEnough;
+                
+                let isVisibilityGood = visibility > 0.4;
+
+                let isCutting = isHeatingNow && isPulling && isHotEnough && isVisibilityGood;
 
                 ctx.shadowColor = isHotEnough ? "orange" : "transparent";
                 ctx.shadowBlur = isHotEnough ? 20 : 0;
                 ctx.lineWidth = isCutting ? 4 : 3;
                 ctx.strokeStyle = wireColor;
+                
+                if (isHotEnough && !isVisibilityGood) {
+                    ctx.strokeStyle = "#555"; 
+                    ctx.shadowBlur = 0;
+                }
 
                 ctx.beginPath();
                 ctx.arc(0, -20, 15, 0, Math.PI, true);
@@ -975,7 +1159,20 @@
                         if(p.active && Math.hypot(p.x - tipX, p.y - tipY) < 35) {
                             if(p.y >= lowestY - 15) {
                                 p.active = false;
+                                particlesRemoved++; 
+                                
                                 if(!isDemo) visibility = Math.max(0.1, visibility - 0.08); 
+                                
+                                floatingChips.push({
+                                    x: p.x,
+                                    y: p.y,
+                                    r: p.r,
+                                    vx: (Math.random() - 0.5) * 1.5,
+                                    vy: (Math.random() - 0.5) * 1.5 + 0.5, 
+                                    rotation: Math.random() * Math.PI,
+                                    vr: (Math.random() - 0.5) * 0.1
+                                });
+
                                 for(let k=0; k<5; k++) {
                                     bloodParticles.push({
                                         x: p.x, y: p.y, 
@@ -1003,7 +1200,22 @@
                 let opacity = 1.0 - visibility;
                 ctx.fillStyle = `rgba(200, 100, 100, ${opacity * 0.8})`; 
                 ctx.fillRect(0,0,width,height);
-                if(opacity > 0.6) {
+                
+                if (visibility <= 0.4) {
+                    ctx.fillStyle = `rgba(100, 20, 20, 0.5)`;
+                    ctx.fillRect(0,0,width,height);
+                    
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "bold 22px Varela Round";
+                    ctx.textAlign = "center";
+                    ctx.shadowColor = "black";
+                    ctx.shadowBlur = 4;
+                    ctx.fillText("!הראות לקויה", cx, cy - 20);
+                    ctx.font = "18px Varela Round";
+                    ctx.fillText("לחץ על כפתור השטיפה", cx, cy + 20);
+                    ctx.shadowBlur = 0;
+                }
+                else if(opacity > 0.6) {
                     ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.3})`;
                     ctx.fillRect(0,0,width,height);
                 }
@@ -1016,7 +1228,7 @@
             ctx.fillRect(0,0,width,height);
 
             if(!isDemo && remaining === 0) {
-                 setTimeout(() => setPhase('POSTOP'), 1000);
+                    setTimeout(() => setPhase('POSTOP'), 1000);
             }
         }
 
@@ -1024,11 +1236,16 @@
         function loop() {
             ctx.clearRect(0,0,width,height);
             
-            if(isDemo) updateDemoAI();
+            if (gameState === 'SHOW_INSTRUMENT') {
+                drawInstrumentShowcase();
+            }
+            else {
+                if(isDemo) updateDemoAI();
 
-            if(gameState.includes('EXTERNAL')) drawExternal();
-            else if(gameState.includes('INTERNAL')) drawInternal();
-            else if(gameState.includes('RESECTION')) drawResection();
+                if(gameState.includes('EXTERNAL')) drawExternal();
+                else if(gameState.includes('INTERNAL')) drawInternal();
+                else if(gameState.includes('RESECTION')) drawResection();
+            }
 
             if(gameState !== 'INTERMISSION' && gameState !== 'INTRO') {
                 requestAnimationFrame(loop);
