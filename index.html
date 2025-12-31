@@ -166,7 +166,7 @@
         #instrument-screen {
             background: rgba(240, 248, 255, 0.1); /* Mostly transparent */
             justify-content: flex-end; /* Align card to bottom */
-            align-items: flex-end; /* Align to Left (in RTL context, end is left) */
+            align-items: flex-end; /* Changed to flex-end (Left side in RTL) */
             padding: 20px; /* Padding from edges */
         }
         
@@ -1161,7 +1161,8 @@
                                 p.active = false;
                                 particlesRemoved++; 
                                 
-                                if(!isDemo) visibility = Math.max(0.1, visibility - 0.08); 
+                                // Significantly reduced visibility decay (was 0.08, now 0.01)
+                                if(!isDemo) visibility = Math.max(0.1, visibility - 0.01); 
                                 
                                 floatingChips.push({
                                     x: p.x,
